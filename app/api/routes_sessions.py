@@ -22,6 +22,10 @@ class CreateSessionResponse(BaseModel):
     user_id: str
 
 
+from app.db import models
+from app.srop.state import SessionState
+from sqlalchemy.dialects.sqlite import insert
+
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(
     body: CreateSessionRequest,
@@ -31,6 +35,34 @@ async def create_session(
     Create a new session. Upsert the user if not seen before.
     Initialize SessionState and persist to DB.
     """
+    # 1. Upsert User
+    # In SQLite, we use the insert().on_conflict_do_update() or similar.
+    # For now, let's just do a simple check and insert.
+    stmt = insert(models.User).values(
+        user_id=body.user_id,
+        plan_tier=body.plan_tier
+    ).on_conflict_do_update(
+        index_elements=["user_id"],
+        set_={"plan_tier": body.plan_tier}
+    )
+    await db.execute(stmt)
+
+    # 2. Create Session
     session_id = str(uuid.uuid4())
-    # TODO: upsert user, create session row with initial state, commit
-    raise NotImplementedError
+    initial_state = SessionState(
+        user_id=body.user_id,
+        plan_tier=body.plan_tier
+    )
+    
+    new_session = models.Session(
+        session_id=session_id,
+        user_id=body.user_id,
+        state=initial_state.to_db_dict()
+    )
+    db.add(new_session)
+    await db.commit()
+
+    return CreateSessionResponse(
+        session_id=session_id,
+        user_id=body.user_id
+    )

@@ -1,52 +1,55 @@
 """
 Account tools — used by AccountAgent.
 
-These tools query the DB for user-specific data.
-Mock data is acceptable for the take-home; the integration matters.
-
-TODO for candidate: implement these tools.
+Returns JSON-serializable dicts (not dataclasses) so ADK can forward the
+result to the LLM.  Mock data is used; the wiring is what matters.
 """
-from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 
-@dataclass
-class BuildSummary:
-    build_id: str
-    pipeline: str
-    status: str  # passed | failed | cancelled
-    branch: str
-    started_at: datetime
-    duration_seconds: int
-
-
-@dataclass
-class AccountStatus:
-    user_id: str
-    plan_tier: str
-    concurrent_builds_used: int
-    concurrent_builds_limit: int
-    storage_used_gb: float
-    storage_limit_gb: float
-
-
-async def get_recent_builds(user_id: str, limit: int = 5) -> list[BuildSummary]:
+async def get_recent_builds(user_id: str, limit: int = 5) -> dict:
     """
-    Return the most recent builds for a user, newest first.
+    Return the most recent CI/CD builds for a user, newest first.
 
-    For the take-home: returning mock/seeded data is fine.
-    The key evaluation point is that this is wired as an ADK tool
-    and the agent correctly invokes it when the user asks about builds.
+    Args:
+        user_id: The Helix user ID to look up builds for.
+        limit: Maximum number of builds to return (default 5).
+
+    Returns:
+        A dict with 'user_id' and 'builds' (list of build summaries).
     """
-    # TODO: implement — query DB or return mock data
-    raise NotImplementedError("Implement get_recent_builds()")
+    now = datetime.now(timezone.utc).isoformat()
+    statuses = ["passed", "failed", "passed", "cancelled", "passed"]
+    builds = [
+        {
+            "build_id": f"build_{user_id}_{i:03d}",
+            "pipeline": "main-deployment",
+            "status": statuses[i % len(statuses)],
+            "branch": "main" if i % 3 != 1 else "feature/my-branch",
+            "started_at": now,
+            "duration_seconds": 120 + i * 15,
+        }
+        for i in range(limit)
+    ]
+    return {"user_id": user_id, "builds": builds}
 
 
-async def get_account_status(user_id: str) -> AccountStatus:
+async def get_account_status(user_id: str) -> dict:
     """
-    Return current account status (plan, usage limits).
+    Return current account status including plan tier and resource usage.
 
-    For the take-home: mock data is fine.
+    Args:
+        user_id: The Helix user ID to look up.
+
+    Returns:
+        A dict with plan, concurrent build usage, and storage usage.
     """
-    # TODO: implement
-    raise NotImplementedError("Implement get_account_status()")
+    return {
+        "user_id": user_id,
+        "plan_tier": "pro",
+        "concurrent_builds_used": 2,
+        "concurrent_builds_limit": 10,
+        "storage_used_gb": 15.4,
+        "storage_limit_gb": 100.0,
+        "active_runners": 3,
+    }

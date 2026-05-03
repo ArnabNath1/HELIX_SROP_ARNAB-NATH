@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: helix-srop
+    env: python
+    buildCommand: uv sync --no-dev
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./data/helix_srop.db
+      - key: CHROMA_PERSIST_DIR
+        value: ./data/chroma_db
+      - key: APP_ENV
+        value: production
+      - key: GOOGLE_API_KEY
+        sync: false # Set this in Render Dashboard
+    disk:
+      name: helix-data
+      mountPath: /app/data
+      sizeGB: 1

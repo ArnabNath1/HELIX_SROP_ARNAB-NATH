@@ -1,1 +1,23 @@
+# Environments
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Databases
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Vector Stores
+chroma_db/
+lancedb/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/

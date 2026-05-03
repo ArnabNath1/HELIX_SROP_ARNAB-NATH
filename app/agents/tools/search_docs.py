@@ -1,13 +1,19 @@
 """
-search_docs tool — used by KnowledgeAgent.
+search_docs — RAG retrieval tool used by KnowledgeAgent.
 
-Queries the vector store for relevant documentation chunks.
-Returns chunk IDs, scores, and content so the agent can cite sources.
-
-TODO for candidate: implement this tool.
-Wire it to your chosen vector store (Chroma, LanceDB, FAISS, etc.).
+Returns a formatted string that the LLM can read, with chunk IDs embedded
+so the agent can cite them.  The pipeline parses chunk IDs from the function
+response for trace recording.
 """
+import structlog
+
+import chromadb
+import google.generativeai as genai
 from dataclasses import dataclass
+
+from app.settings import settings
+
+log = structlog.get_logger()
 
 
 @dataclass
@@ -18,22 +24,83 @@ class DocChunk:
     metadata: dict  # e.g. {"product_area": "security", "source": "deploy-keys.md"}
 
 
-async def search_docs(query: str, k: int = 5, product_area: str | None = None) -> list[DocChunk]:
+async def search_docs(query: str, k: int = 5) -> str:
     """
-    Search the vector store for top-k relevant chunks.
-
-    Args:
-        query: natural language query from the user
-        k: number of chunks to return
-        product_area: optional metadata filter (e.g. "security", "ci-cd")
-
-    Returns:
-        List of DocChunk ordered by descending similarity score.
-
-    Design considerations:
-    - How do you embed the query? Same model as at ingest time.
-    - Do you apply a score threshold to filter low-quality results?
-    - How do you format chunks for the agent? Include chunk_id so agent can cite.
+    Search Helix product documentation for chunks relevant to the query.
+    Uses LLM reranking to pick the best results.
     """
-    # TODO: implement
-    raise NotImplementedError("Implement search_docs()")
+    genai.configure(api_key=settings.google_api_key)
+
+    # 1. Retrieval (Top 10)
+    result = genai.embed_content(
+        model="models/gemini-embedding-001",
+        content=query,
+        task_type="retrieval_query",
+    )
+    query_embedding = result["embedding"]
+
+    client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+    collection = client.get_or_create_collection(name="helix_docs")
+
+    # Get more than k for reranking
+    results = collection.query(query_embeddings=[query_embedding], n_results=min(k * 2, 10))
+
+    if not results["ids"] or not results["ids"][0]:
+        return "No relevant documentation found for this query."
+
+    chunks: list[DocChunk] = []
+    for chunk_id, distance, doc, meta in zip(
+        results["ids"][0], results["distances"][0], results["documents"][0], results["metadatas"][0]
+    ):
+        score = round(1.0 - distance, 4)
+        chunks.append(DocChunk(chunk_id=chunk_id, score=score, content=doc, metadata=meta))
+
+    # 2. Reranking (LLM-as-judge)
+    # We ask the LLM to rank the chunks by ID
+    candidate_text = "\n".join([f"ID: {c.chunk_id}\nContent: {c.content[:200]}..." for c in chunks])
+    rerank_prompt = f"""
+    You are an expert search reranker. Given the query '{query}' and the following candidates, 
+    list the IDs of the top {k} most relevant chunks, best first. 
+    Output ONLY the IDs separated by commas, nothing else.
+    
+    Candidates:
+    {candidate_text}
+    """
+    
+    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+    try:
+        rerank_res = model.generate_content(rerank_prompt)
+        best_ids = [cid.strip() for cid in rerank_res.text.split(",") if cid.strip()]
+        # Filter chunks based on LLM's choice
+        final_chunks = []
+        for bid in best_ids:
+            matching = [c for c in chunks if c.chunk_id == bid]
+            if matching:
+                final_chunks.append(matching[0])
+        # Fallback if LLM failed
+        if not final_chunks:
+            final_chunks = chunks[:k]
+        else:
+            final_chunks = final_chunks[:k]
+    except Exception as e:
+        log.error("rerank_error", error=str(e))
+        final_chunks = chunks[:k]
+
+    log.info(
+        "search_docs_results",
+        query=query,
+        k=k,
+        num_results=len(final_chunks),
+        top_score=final_chunks[0].score if final_chunks else None,
+        reranked=True
+    )
+
+    parts: list[str] = []
+    for chunk in final_chunks:
+        source = chunk.metadata.get("source", "unknown")
+        parts.append(
+            f"[{chunk.chunk_id}] (score: {chunk.score:.2f}, source: {source})\n"
+            f"{chunk.content}"
+        )
+
+    return "\n\n---\n\n".join(parts)
