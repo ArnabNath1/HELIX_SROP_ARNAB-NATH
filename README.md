@@ -27,6 +27,25 @@ curl -s -X POST localhost:8000/v1/chat/$SESSION \
 
 ## Architecture
 
+```text
+       [ User Request ]
+              |
+              v
+      +-------+-------+
+      |  Orchestrator | (Pattern 3: Dynamic State Injection)
+      +-------+-------+
+              |
+      +-------+-------------------+-------------------+
+      |                           |                   |
+      v                           v                   v
++-----+-------+           +-------+-----+     +-------+-------+
+| Knowledge   |           |  Account    |     |  Support      |
+| Agent (RAG) |           |  Agent      |     |  Agent        |
++-----+-------+           +-------+-----+     +-------+-------+
+      |                           |                   |
+ [ChromaDB] + [Rerank]     [Mock Systems]      [SQLite Ticket DB]
+```
+
 The system uses a **multi-agent orchestration** pattern powered by the Google ADK.
 
 - **Root Orchestrator**: Routes user intent to specialist sub-agents.
@@ -61,3 +80,15 @@ I chose **ChromaDB** because of its native support for embedding functions and l
 
 - Reranking adds approximately 1-2 seconds of latency to the initial knowledge retrieval.
 - Free-tier Gemini API quotas are highly restrictive (limit: 20-60 RPM).
+
+## Time Spent
+
+| Phase | Time |
+|-------|------|
+| Setup + DB + FastAPI boilerplate | 1h |
+| RAG ingest + search_docs | 1.5h |
+| ADK agents | 1h |
+| pipeline.py + state persistence | 1h |
+| Extensions (E1-E6) | 3h |
+| README + Polish | 0.5h |
+| **Total** | **8h** |
