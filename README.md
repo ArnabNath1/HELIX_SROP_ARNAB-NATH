@@ -83,12 +83,12 @@ I chose **ChromaDB** because of its native support for embedding functions and l
 
 ## Time Spent
 
-| Phase | Time |
-|-------|------|
-| Setup + DB + FastAPI boilerplate | 1h |
-| RAG ingest + search_docs | 1.5h |
-| ADK agents | 1h |
-| pipeline.py + state persistence | 1h |
-| Extensions (E1-E6) | 3h |
-| README + Polish | 0.5h |
-| **Total** | **8h** |
+| Phase                            | Time    |
+| -------------------------------- | ------- |
+| Setup + DB + FastAPI boilerplate | 30min   |
+| RAG ingest + search_docs         | 1h      |
+| ADK agents                       | 30min   |
+| pipeline.py + state persistence  | 30min   |
+| Extensions (E1-E6)               | 1h      |
+| README + Polish                  | 1h      |
+| **Total**                  | 4h30min |
