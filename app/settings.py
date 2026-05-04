@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = "./chroma_db"
 
     google_api_key: str = ""
-    adk_model: str = "gemini-1.5-flash"
+    adk_model: str = "gemini-2.0-flash"
 
-    llm_timeout_seconds: int = 30
-    tool_timeout_seconds: int = 10
+    llm_timeout_seconds: int = 60
+    tool_timeout_seconds: int = 30
 
 
 settings = Settings()

@@ -8,7 +8,7 @@ response for trace recording.
 import structlog
 
 import chromadb
-import google.generativeai as genai
+from google import genai
 from dataclasses import dataclass
 
 from app.settings import settings
@@ -29,18 +29,20 @@ async def search_docs(query: str, k: int = 5) -> str:
     Search Helix product documentation for chunks relevant to the query.
     Uses LLM reranking to pick the best results.
     """
-    genai.configure(api_key=settings.google_api_key)
+    client = genai.Client(api_key=settings.google_api_key)
 
     # 1. Retrieval (Top 10)
-    result = genai.embed_content(
+    result = client.models.embed_content(
         model="models/gemini-embedding-001",
-        content=query,
-        task_type="retrieval_query",
+        contents=query,
+        config={
+            "task_type": "retrieval_query",
+        }
     )
-    query_embedding = result["embedding"]
+    query_embedding = result.embeddings[0].values
 
-    client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-    collection = client.get_or_create_collection(name="helix_docs")
+    chroma_client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+    collection = chroma_client.get_or_create_collection(name="helix_docs")
 
     # Get more than k for reranking
     results = collection.query(query_embeddings=[query_embedding], n_results=min(k * 2, 10))
@@ -67,9 +69,11 @@ async def search_docs(query: str, k: int = 5) -> str:
     {candidate_text}
     """
     
-    model = genai.GenerativeModel(model_name="gemini-1.5-flash")
     try:
-        rerank_res = model.generate_content(rerank_prompt)
+        rerank_res = client.models.generate_content(
+            model=settings.adk_model,
+            contents=rerank_prompt
+        )
         best_ids = [cid.strip() for cid in rerank_res.text.split(",") if cid.strip()]
         # Filter chunks based on LLM's choice
         final_chunks = []
