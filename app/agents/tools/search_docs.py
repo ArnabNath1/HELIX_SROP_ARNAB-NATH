@@ -70,8 +70,9 @@ async def search_docs(query: str, k: int = 5) -> str:
     """
     
     try:
+        # Use a lighter model for reranking to save quota on the main model
         rerank_res = client.models.generate_content(
-            model=settings.adk_model,
+            model="gemini-2.0-flash-lite",
             contents=rerank_prompt
         )
         best_ids = [cid.strip() for cid in rerank_res.text.split(",") if cid.strip()]
